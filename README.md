@@ -112,9 +112,3 @@ tests/     автоматизовані тести
 data/input_requests.csv  вхідне вивантаження запитів
 output/    результати обробки
 ```
-
-Файл `data/input_requests.csv` очікується у форматі UTF-8 CSV з колонками
-`id`, `channel`, `timestamp`, `raw_text`.
-
-> API-ключ Gemini не повинен потрапляти до Git. Зберігайте його лише в
-> локальному файлі `.env` як `GEMINI_API_KEY`.
