@@ -1,0 +1,64 @@
+# Netpeak AI Request Triage
+
+Сервіс структурує внутрішні запити до AI-юніту.
+
+## Поточний стан
+
+Наразі реалізовано каркас проєкту, конфігурацію та доменні Pydantic-схеми.
+Наступні етапи додадуть читання CSV, класифікацію через Gemini, валідацію,
+retry/fallback та формування звітів.
+
+## Вимоги
+
+- Python 3.11+
+
+## Встановлення
+
+```bash
+python -m venv .venv
+```
+
+Активуйте віртуальне середовище:
+
+```bash
+# Linux/macOS
+source .venv/bin/activate
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+```
+
+Встановіть runtime- та dev-залежності:
+
+```bash
+pip install -r requirements.txt
+pip install -e ".[dev]"
+```
+
+Створіть локальний файл конфігурації:
+
+```bash
+# Linux/macOS
+cp .env.example .env
+
+# Windows PowerShell
+Copy-Item .env.example .env
+```
+
+## Тести
+
+```bash
+pytest
+```
+
+## Структура
+
+```text
+src/       конфігурація та доменні схеми
+tests/     тести схем
+data/      вхідні дані майбутніх етапів
+output/    демонстраційні результати майбутніх етапів
+```
+
+> API-ключ Gemini не повинен потрапляти до Git. Зберігайте його лише в
+> локальному файлі `.env`.
