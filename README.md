@@ -80,6 +80,25 @@ python -m src.main --input data/input_requests.csv --output-dir output
 низьку впевненість, отримали fallback або мають неоднозначну класифікацію
 `поза скоупом`.
 
+## Обмеження
+
+Помилки квоти або rate limit Gemini API обробляються як fallback для окремого
+запиту. Фактична доступність моделі та ліміти залежать від Google project і
+usage tier. За відсутності доступної квоти результат матиме
+`validation_status="fallback"` і потрапить до `review_queue.json`.
+
+Сервіс синхронно витримує мінімальний інтервал між усіма Gemini API-викликами.
+За замовчуванням це `13` секунд, що підходить для Free tier з обмеженням
+5 RPM. Значення можна локально змінити через
+`GEMINI_MIN_REQUEST_INTERVAL_SECONDS` у `.env`. Repair-запит також рахується
+як окремий API-виклик. Фактичні квоти залежать від Google project, моделі та
+usage tier, тому цей інтервал не гарантує відсутність 429 у всіх середовищах.
+
+`output.json` містить безпечну технічну категорію причини fallback:
+rate limit або quota, API error чи empty output. Сервіс не записує до
+`processing_error` секрети, текст вихідного запиту, повну відповідь провайдера
+або stack trace.
+
 ## Тести
 
 ```bash

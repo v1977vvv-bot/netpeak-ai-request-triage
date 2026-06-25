@@ -1,13 +1,18 @@
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from google.genai import errors
+from google.genai._gaos.lib import compat_errors
 from pydantic import ValidationError
 
 from src.config import Settings
 from src.gemini_client import (
+    API_ERROR_CODE,
     CLASSIFICATION_TEMPERATURE,
+    EMPTY_OUTPUT_ERROR_CODE,
     JSON_MIME_TYPE,
+    RATE_LIMITED_ERROR_CODE,
     GeminiClient,
     GeminiClientError,
     GeminiConfigurationError,
@@ -146,8 +151,10 @@ def test_classify_request_rejects_empty_output(client_class: MagicMock) -> None:
     settings = Settings(gemini_api_key="test-api-key", _env_file=None)
     client_class.return_value.interactions.create.return_value.output_text = "   "
 
-    with pytest.raises(GeminiClientError, match="empty"):
+    with pytest.raises(GeminiClientError, match="empty") as raised_error:
         GeminiClient(settings).classify_request(incoming_request())
+
+    assert raised_error.value.code == EMPTY_OUTPUT_ERROR_CODE
 
 
 @patch("src.gemini_client.genai.Client")
@@ -160,3 +167,72 @@ def test_classify_request_wraps_sdk_error(client_class: MagicMock) -> None:
         GeminiClient(settings).classify_request(incoming_request())
 
     assert raised_error.value.__cause__ is original_error
+    assert raised_error.value.code == API_ERROR_CODE
+
+
+@patch("src.gemini_client.genai.Client")
+def test_classify_request_wraps_interactions_rate_limit_error(
+    client_class: MagicMock,
+) -> None:
+    settings = Settings(gemini_api_key="test-api-key", _env_file=None)
+    request = httpx.Request("POST", "https://generativelanguage.googleapis.com")
+    response = httpx.Response(429, request=request)
+    original_error = compat_errors.RateLimitError(
+        "Quota exceeded.",
+        response=response,
+        body={"message": "quota exceeded"},
+    )
+    client_class.return_value.interactions.create.side_effect = original_error
+
+    with pytest.raises(GeminiClientError) as raised_error:
+        GeminiClient(settings).classify_request(incoming_request())
+
+    assert raised_error.value.__cause__ is original_error
+    assert raised_error.value.code == RATE_LIMITED_ERROR_CODE
+
+
+@patch("src.gemini_client.sleep")
+@patch("src.gemini_client.monotonic", return_value=100.0)
+@patch("src.gemini_client.genai.Client")
+def test_first_api_call_does_not_sleep(
+    client_class: MagicMock,
+    monotonic_mock: MagicMock,
+    sleep_mock: MagicMock,
+) -> None:
+    settings = Settings(
+        gemini_api_key="test-api-key",
+        gemini_min_request_interval_seconds=13.0,
+        _env_file=None,
+    )
+    sdk_client = client_class.return_value
+    sdk_client.interactions.create.return_value.output_text = '{"priority":"medium"}'
+
+    GeminiClient(settings).classify_request(incoming_request())
+
+    sleep_mock.assert_not_called()
+    monotonic_mock.assert_called_once()
+
+
+@patch("src.gemini_client.sleep")
+@patch("src.gemini_client.monotonic", side_effect=[100.0, 105.0, 113.0])
+@patch("src.gemini_client.genai.Client")
+def test_second_api_call_waits_for_remaining_interval(
+    client_class: MagicMock,
+    monotonic_mock: MagicMock,
+    sleep_mock: MagicMock,
+) -> None:
+    settings = Settings(
+        gemini_api_key="test-api-key",
+        gemini_min_request_interval_seconds=13.0,
+        _env_file=None,
+    )
+    sdk_client = client_class.return_value
+    sdk_client.interactions.create.return_value.output_text = '{"priority":"medium"}'
+    client = GeminiClient(settings)
+
+    client.classify_request(incoming_request())
+    client.classify_request(incoming_request())
+
+    sleep_mock.assert_called_once_with(8.0)
+    assert sdk_client.interactions.create.call_count == 2
+    assert monotonic_mock.call_count == 3

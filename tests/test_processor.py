@@ -1,6 +1,11 @@
 from unittest.mock import MagicMock
 
-from src.gemini_client import GeminiClient, GeminiClientError
+from src.gemini_client import (
+    EMPTY_OUTPUT_ERROR_CODE,
+    RATE_LIMITED_ERROR_CODE,
+    GeminiClient,
+    GeminiClientError,
+)
 from src.processor import RequestProcessor
 from src.schemas import (
     ConfidenceLevel,
@@ -83,24 +88,36 @@ def test_process_request_returns_fallback_after_invalid_repair() -> None:
 
 def test_process_request_returns_fallback_on_initial_client_error() -> None:
     client = gemini_client_mock()
-    client.classify_request.side_effect = GeminiClientError("API failed")
+    client.classify_request.side_effect = GeminiClientError(
+        "API failed",
+        code=RATE_LIMITED_ERROR_CODE,
+    )
 
     result = RequestProcessor(client).process_request(incoming_request())
 
     client.repair_classification.assert_not_called()
     assert result.metadata.validation_status is ValidationStatus.FALLBACK
     assert result.metadata.retry_count == 0
+    assert result.metadata.processing_error == (
+        "Gemini rate limit or quota prevented the initial request."
+    )
 
 
 def test_process_request_returns_fallback_on_repair_client_error() -> None:
     client = gemini_client_mock()
     client.classify_request.return_value = '{"category":"unknown"}'
-    client.repair_classification.side_effect = GeminiClientError("API failed")
+    client.repair_classification.side_effect = GeminiClientError(
+        "Empty output",
+        code=EMPTY_OUTPUT_ERROR_CODE,
+    )
 
     result = RequestProcessor(client).process_request(incoming_request())
 
     assert result.metadata.validation_status is ValidationStatus.FALLBACK
     assert result.metadata.retry_count == 1
+    assert result.metadata.processing_error == (
+        "Initial output was invalid and Gemini returned an empty repair response."
+    )
 
 
 def test_process_requests_preserves_order() -> None:

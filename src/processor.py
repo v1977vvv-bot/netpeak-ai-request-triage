@@ -4,7 +4,13 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
-from src.gemini_client import GeminiClient, GeminiClientError
+from src.gemini_client import (
+    API_ERROR_CODE,
+    EMPTY_OUTPUT_ERROR_CODE,
+    RATE_LIMITED_ERROR_CODE,
+    GeminiClient,
+    GeminiClientError,
+)
 from src.prompt_builder import PROMPT_VERSION
 from src.schemas import (
     ConfidenceLevel,
@@ -18,6 +24,24 @@ from src.schemas import (
 )
 
 MAX_REPAIR_ATTEMPTS = 1
+INITIAL_ERROR_MESSAGES = {
+    RATE_LIMITED_ERROR_CODE: (
+        "Gemini rate limit or quota prevented the initial request."
+    ),
+    API_ERROR_CODE: "Gemini API error prevented the initial request.",
+    EMPTY_OUTPUT_ERROR_CODE: "Gemini returned an empty initial response.",
+}
+REPAIR_ERROR_MESSAGES = {
+    RATE_LIMITED_ERROR_CODE: (
+        "Initial output was invalid and Gemini rate limit or quota prevented repair."
+    ),
+    API_ERROR_CODE: (
+        "Initial output was invalid and Gemini API error prevented repair."
+    ),
+    EMPTY_OUTPUT_ERROR_CODE: (
+        "Initial output was invalid and Gemini returned an empty repair response."
+    ),
+}
 
 
 class RequestProcessor:
@@ -30,11 +54,11 @@ class RequestProcessor:
         """Process one request into a validated classification and metadata."""
         try:
             raw_response = self._gemini_client.classify_request(request)
-        except GeminiClientError:
+        except GeminiClientError as error:
             return self._build_fallback_result(
                 request,
                 retry_count=0,
-                processing_error="Gemini did not return a usable initial response.",
+                processing_error=INITIAL_ERROR_MESSAGES[error.code],
             )
 
         try:
@@ -72,13 +96,11 @@ class RequestProcessor:
                 invalid_response,
                 validation_error,
             )
-        except GeminiClientError:
+        except GeminiClientError as error:
             return self._build_fallback_result(
                 request,
                 retry_count=MAX_REPAIR_ATTEMPTS,
-                processing_error=(
-                    "Initial output was invalid and the repair request failed."
-                ),
+                processing_error=REPAIR_ERROR_MESSAGES[error.code],
             )
 
         try:
