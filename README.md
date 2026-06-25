@@ -4,15 +4,19 @@
 
 ## Поточний стан
 
-Наразі реалізовано каркас проєкту, конфігурацію, доменні Pydantic-схеми,
-читання CSV, prompt builder та Gemini client. Gemini API підключено через
-офіційний пакет `google-genai`. LLM-відповідь проходить Pydantic-валідацію,
-одну спробу repair для невалідного structured output та безпечний fallback без
-падіння всього процесу. Після обробки сервіс створює структурований JSON,
-Markdown-звіт і чергу ручної перевірки.
+Реалізовано сервіс для структурування внутрішніх запитів до AI-юніту за допомогою Gemini API.
 
-Fallback направляє запит на ручну перевірку з `needs_clarification=true`,
-`confidence=low` та `routing_recommendation="Manual triage"`.
+Сервіс:
+
+* читає CSV із вхідними запитами;
+* визначає категорію, цільовий відділ, пріоритет і потребу в уточненні;
+* генерує короткий summary, перелік запитаних дій та уточнювальні питання;
+* перевіряє structured output через Pydantic;
+* виконує одну repair-спробу для невалідної відповіді;
+* безпечно обробляє quota, rate limit, API errors та empty output через fallback;
+* формує `output.json`, `report.md` і `review_queue.json`.
+
+До репозиторію додано результат успішного реального запуску: 18 із 18 запитів валідно оброблено без fallback.
 
 ## Вимоги
 
@@ -87,12 +91,7 @@ python -m src.main --input data/input_requests.csv --output-dir output
 usage tier. За відсутності доступної квоти результат матиме
 `validation_status="fallback"` і потрапить до `review_queue.json`.
 
-Сервіс синхронно витримує мінімальний інтервал між усіма Gemini API-викликами.
-За замовчуванням це `13` секунд, що підходить для Free tier з обмеженням
-5 RPM. Значення можна локально змінити через
-`GEMINI_MIN_REQUEST_INTERVAL_SECONDS` у `.env`. Repair-запит також рахується
-як окремий API-виклик. Фактичні квоти залежать від Google project, моделі та
-usage tier, тому цей інтервал не гарантує відсутність 429 у всіх середовищах.
+Сервіс синхронно витримує мінімальний інтервал між усіма Gemini API-викликами. За замовчуванням інтервал становить `13` секунд і налаштовується локально через `GEMINI_MIN_REQUEST_INTERVAL_SECONDS` у `.env`. Repair-запит також є окремим API-викликом. Фактичні квоти та рекомендований інтервал залежать від вибраної моделі, Google project і usage tier.
 
 `output.json` містить безпечну технічну категорію причини fallback:
 rate limit або quota, API error чи empty output. Сервіс не записує до
