@@ -8,8 +8,8 @@
 читання CSV, prompt builder та Gemini client. Gemini API підключено через
 офіційний пакет `google-genai`. LLM-відповідь проходить Pydantic-валідацію,
 одну спробу repair для невалідного structured output та безпечний fallback без
-падіння всього процесу. Наступні етапи додадуть формування вихідних файлів і
-звітів.
+падіння всього процесу. Після обробки сервіс створює структурований JSON,
+Markdown-звіт і чергу ручної перевірки.
 
 Fallback направляє запит на ручну перевірку з `needs_clarification=true`,
 `confidence=low` та `routing_recommendation="Manual triage"`.
@@ -51,6 +51,35 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
+Заповніть API-ключ у `.env`:
+
+```env
+GEMINI_API_KEY=...
+```
+
+## Запуск
+
+```bash
+pip install -r requirements.txt
+python -m src.main
+```
+
+Запуск із явними шляхами:
+
+```bash
+python -m src.main --input data/input_requests.csv --output-dir output
+```
+
+Після завершення в директорії результатів створюються:
+
+- `output.json` — повний структурований результат і технічні метадані;
+- `report.md` — агрегований Markdown-звіт;
+- `review_queue.json` — запити для ручної перевірки.
+
+До черги ручної перевірки потрапляють запити, що потребують уточнення, мають
+низьку впевненість, отримали fallback або мають неоднозначну класифікацію
+`поза скоупом`.
+
 ## Тести
 
 ```bash
@@ -60,10 +89,10 @@ pytest
 ## Структура
 
 ```text
-src/       конфігурація та доменні схеми
-tests/     тести схем
+src/       конфігурація, обробка, CLI та генерація артефактів
+tests/     автоматизовані тести
 data/input_requests.csv  вхідне вивантаження запитів
-output/    демонстраційні результати майбутніх етапів
+output/    результати обробки
 ```
 
 Файл `data/input_requests.csv` очікується у форматі UTF-8 CSV з колонками
