@@ -6,8 +6,13 @@
 
 Наразі реалізовано каркас проєкту, конфігурацію, доменні Pydantic-схеми,
 читання CSV, prompt builder та Gemini client. Gemini API підключено через
-офіційний пакет `google-genai`. Наступні етапи додадуть валідацію відповідей,
-retry/fallback та формування звітів.
+офіційний пакет `google-genai`. LLM-відповідь проходить Pydantic-валідацію,
+одну спробу repair для невалідного structured output та безпечний fallback без
+падіння всього процесу. Наступні етапи додадуть формування вихідних файлів і
+звітів.
+
+Fallback направляє запит на ручну перевірку з `needs_clarification=true`,
+`confidence=low` та `routing_recommendation="Manual triage"`.
 
 ## Вимоги
 

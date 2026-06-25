@@ -2,9 +2,10 @@
 
 from google import genai
 from google.genai import errors
+from pydantic import ValidationError
 
 from src.config import Settings
-from src.prompt_builder import build_classification_prompt
+from src.prompt_builder import build_classification_prompt, build_repair_prompt
 from src.schemas import IncomingRequest, RequestClassification
 
 JSON_MIME_TYPE = "application/json"
@@ -33,13 +34,31 @@ class GeminiClient:
         self._settings = settings
         self._client = genai.Client(api_key=normalized_api_key)
 
+    @property
+    def model_name(self) -> str:
+        """Return the configured Gemini model name."""
+        return self._settings.gemini_model
+
     def classify_request(self, request: IncomingRequest) -> str:
         """Return the raw structured JSON text produced by Gemini."""
         prompt = build_classification_prompt(request)
+        return self._generate_structured_response(prompt)
 
+    def repair_classification(
+        self,
+        request: IncomingRequest,
+        invalid_response: str,
+        validation_error: ValidationError,
+    ) -> str:
+        """Return raw JSON text intended to repair an invalid response."""
+        prompt = build_repair_prompt(request, invalid_response, validation_error)
+        return self._generate_structured_response(prompt)
+
+    def _generate_structured_response(self, prompt: str) -> str:
+        """Send one structured-output request and return its raw text."""
         try:
             interaction = self._client.interactions.create(
-                model=self._settings.gemini_model,
+                model=self.model_name,
                 input=prompt,
                 generation_config={"temperature": CLASSIFICATION_TEMPERATURE},
                 response_format={
@@ -51,7 +70,7 @@ class GeminiClient:
         # APIError is the stable public SDK exception; internal transports vary.
         except errors.APIError as error:
             raise GeminiClientError(
-                "Gemini API request failed while classifying the request."
+                "Gemini API request failed while generating a structured response."
             ) from error
 
         output_text = interaction.output_text

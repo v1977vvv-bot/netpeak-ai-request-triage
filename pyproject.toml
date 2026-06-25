@@ -33,6 +33,7 @@ line-length = 88
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
+"src/processor.py" = ["RUF001"]
 "src/prompt_builder.py" = ["RUF001"]
 "src/schemas.py" = ["RUF001"]
 "tests/test_prompt_builder.py" = ["RUF001"]

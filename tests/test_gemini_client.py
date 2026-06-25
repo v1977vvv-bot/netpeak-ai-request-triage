@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from google.genai import errors
+from pydantic import ValidationError
 
 from src.config import Settings
 from src.gemini_client import (
@@ -21,6 +22,12 @@ def incoming_request() -> IncomingRequest:
         timestamp="2026-06-25",
         raw_text="Потрібно автоматизувати звіт",
     )
+
+
+def classification_validation_error() -> ValidationError:
+    with pytest.raises(ValidationError) as raised_error:
+        RequestClassification.model_validate_json('{"category":"unknown"}')
+    return raised_error.value
 
 
 @pytest.mark.parametrize("api_key", [None, "", "   "])
@@ -49,6 +56,19 @@ def test_client_strips_api_key_before_sdk_initialization(
     GeminiClient(settings)
 
     client_class.assert_called_once_with(api_key="test-api-key")
+
+
+@patch("src.gemini_client.genai.Client")
+def test_model_name_returns_configured_model(client_class: MagicMock) -> None:
+    settings = Settings(
+        gemini_api_key="test-api-key",
+        gemini_model="configured-model",
+        _env_file=None,
+    )
+
+    client = GeminiClient(settings)
+
+    assert client.model_name == "configured-model"
 
 
 @patch("src.gemini_client.build_classification_prompt")
@@ -81,6 +101,44 @@ def test_classify_request_calls_gemini_with_structured_output(
         },
     )
     assert result == '{"priority":"medium"}'
+
+
+@patch("src.gemini_client.build_repair_prompt")
+@patch("src.gemini_client.genai.Client")
+def test_repair_classification_returns_raw_structured_output(
+    client_class: MagicMock,
+    build_repair_prompt: MagicMock,
+) -> None:
+    settings = Settings(gemini_api_key="test-api-key", _env_file=None)
+    sdk_client = client_class.return_value
+    sdk_client.interactions.create.return_value.output_text = "not validated JSON"
+    build_repair_prompt.return_value = "repair prompt"
+    request = incoming_request()
+    invalid_response = '{"category":"unknown"}'
+    validation_error = classification_validation_error()
+
+    result = GeminiClient(settings).repair_classification(
+        request,
+        invalid_response,
+        validation_error,
+    )
+
+    build_repair_prompt.assert_called_once_with(
+        request,
+        invalid_response,
+        validation_error,
+    )
+    sdk_client.interactions.create.assert_called_once_with(
+        model="gemini-2.5-flash",
+        input="repair prompt",
+        generation_config={"temperature": CLASSIFICATION_TEMPERATURE},
+        response_format={
+            "type": "text",
+            "mime_type": JSON_MIME_TYPE,
+            "schema": RequestClassification.model_json_schema(),
+        },
+    )
+    assert result == "not validated JSON"
 
 
 @patch("src.gemini_client.genai.Client")
