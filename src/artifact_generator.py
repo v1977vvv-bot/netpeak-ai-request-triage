@@ -251,10 +251,8 @@ def _build_request_list(
             f"{_escape_markdown(classification.short_summary)}"
         )
         if include_questions:
-            lines.extend(
-                f"  - Уточнення: {_escape_markdown(question)}"
-                for question in classification.clarifying_questions
-            )
+            for question in classification.clarifying_questions:
+                lines.append(f"  - Уточнення: {_escape_markdown(question)}")
     return lines
 
 

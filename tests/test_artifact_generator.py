@@ -33,8 +33,15 @@ def processed_request(
     validation_status: ValidationStatus = ValidationStatus.VALID,
     department: str | None = "аналітика",
     summary: str = "Автоматизувати внутрішній звіт",
+    clarifying_questions: list[str] | None = None,
 ) -> ProcessedRequest:
-    questions = ["Який очікуваний результат?"] if needs_clarification else []
+    questions = (
+        clarifying_questions
+        if clarifying_questions is not None
+        else ["Який очікуваний результат?"]
+        if needs_clarification
+        else []
+    )
     return ProcessedRequest(
         request=IncomingRequest(
             id=request_id,
@@ -198,6 +205,21 @@ def test_build_report_contains_required_sections_and_safe_values() -> None:
     assert "`REQ-FALLBACK`" in report
     assert "Терміновий \\| звіт для керівництва" in report
     assert "Safe fallback reason." not in report
+
+
+def test_build_report_indents_all_clarifying_questions() -> None:
+    questions = ["Перше питання?", "Друге питання?", "Третє питання?"]
+    request = processed_request(
+        "REQ-017",
+        needs_clarification=True,
+        clarifying_questions=questions,
+    )
+
+    report = build_report([request])
+    clarification_lines = [line for line in report.splitlines() if "Уточнення:" in line]
+
+    assert len(clarification_lines) == 3
+    assert all(line.startswith("  - Уточнення: ") for line in clarification_lines)
 
 
 def test_write_artifacts_wraps_os_error(tmp_path: Path) -> None:
